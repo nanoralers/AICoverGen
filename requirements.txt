@@ -3,9 +3,11 @@ fairseq==0.12.2
 faiss-cpu==1.7.3
 ffmpeg-python>=0.2.0
 gradio==3.39.0
+gradio_client==0.8.1
 lib==4.0.0
 librosa==0.9.1
 numpy==1.23.5
+onnxruntime
 onnxruntime_gpu
 onnxruntime-gpu
 praat-parselmouth>=0.4.2
