@@ -55,7 +55,7 @@ class MDXModel:
 
 
 class MDX:
-    DEFAULT_SR = 44100
+    DEFAULT_SR = 48000
     # Unit: seconds
     DEFAULT_CHUNK_SIZE = 0 * DEFAULT_SR
     DEFAULT_MARGIN_SIZE = 1 * DEFAULT_SR

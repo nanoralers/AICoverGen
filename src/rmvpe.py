@@ -199,7 +199,7 @@ class DeepUnet(nn.Module):
     ):
         super(DeepUnet, self).__init__()
         self.encoder = Encoder(
-            in_channels, 128, en_de_layers, kernel_size, n_blocks, en_out_channels
+            in_channels, 256, en_de_layers, kernel_size, n_blocks, en_out_channels
         )
         self.intermediate = Intermediate(
             self.encoder.out_channel // 2,

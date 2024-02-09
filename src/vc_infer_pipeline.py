@@ -38,11 +38,11 @@ def cache_harvest_f0(input_audio_path, fs, f0max, f0min, frame_period):
     return f0
 
 
-def change_rms(data1, sr1, data2, sr2, rate):  # 1是输入音频，2是输出音频,rate是2的占比
+def change_rms(data1, sr1, data2, sr2, rate):  # 1 es entrada de audio，2 es la salida de audio, el rate equivale a la proporción respecto al 2
     # print(data1.max(),data2.max())
     rms1 = librosa.feature.rms(
         y=data1, frame_length=sr1 // 2 * 2, hop_length=sr1 // 2
-    )  # 每半秒一个点
+    )  # Un punto por cada medio segundo
     rms2 = librosa.feature.rms(y=data2, frame_length=sr2 // 2 * 2, hop_length=sr2 // 2)
     rms1 = torch.from_numpy(rms1)
     rms1 = F.interpolate(
@@ -69,42 +69,41 @@ class VC(object):
             config.x_max,
             config.is_half,
         )
-        self.sr = 16000  # hubert输入采样率
-        self.window = 160  # 每帧点数
-        self.t_pad = self.sr * self.x_pad  # 每条前后pad时间
+        self.sr = 16000  # Frecuencia de muestreo de entrada Hubert
+        self.window = 160  # Puntos por trama
+        self.t_pad = self.sr * self.x_pad  # Espacio antes y después de cada compás
         self.t_pad_tgt = tgt_sr * self.x_pad
         self.t_pad2 = self.t_pad * 2
-        self.t_query = self.sr * self.x_query  # 查询切点前后查询时间
-        self.t_center = self.sr * self.x_center  # 查询切点位置
-        self.t_max = self.sr * self.x_max  # 免查询时长阈值
+        self.t_query = self.sr * self.x_query  # El tiempo de cálculo antes y después del punto de corte de la consulta.
+        self.t_center = self.sr * self.x_center  # Consulta de la posición de un centro tangencial
+        self.t_max = self.sr * self.x_max  # Tiempo máximo de espera sin consulta
         self.device = config.device
 
-    # Fork Feature: Get the best torch device to use for f0 algorithms that require a torch device. Will return the type (torch.device)
+    # Característica del Fork: Establece el mejor uso de torch para las algoritmos f0 que requieran un tipo de dispositivo torch. Mostrará el correspondiente dispositivo (torch.device).
     def get_optimal_torch_device(self, index: int = 0) -> torch.device:
-        # Get cuda device
+        # Conseguir dispositivo cuda
         if torch.cuda.is_available():
             return torch.device(
                 f"cuda:{index % torch.cuda.device_count()}"
-            )  # Very fast
+            )  # Muy rápido
         elif torch.backends.mps.is_available():
             return torch.device("mps")
-        # Insert an else here to grab "xla" devices if available. TO DO later. Requires the torch_xla.core.xla_model library
-        # Else wise return the "cpu" as a torch device,
+        # IIntroduce un si no, para capturar los dispositivos "xla" si hay disponibles. A HACER después. Se requiere la biblioteca torch_xla.core.xla_model de otro modo devolverá la "cpu" como un dispositivo torch.
         return torch.device("cpu")
 
-    # Fork Feature: Compute f0 with the crepe method
+    # Fork Feature: Cálculo de f0 usando el metodo Crepe.
     def get_f0_crepe_computation(
         self,
         x,
         f0_min,
         f0_max,
         p_len,
-        hop_length=160,  # 512 before. Hop length changes the speed that the voice jumps to a different dramatic pitch. Lower hop lengths means more pitch accuracy but longer inference time.
-        model="full",  # Either use crepe-tiny "tiny" or crepe "full". Default is full
+        hop_length=160,  # Antes 512. Según la velocidad de salto, la voz salta a un tono más marcado. Una menor longitud de salto supone una mayor precisión del tono, pero más tiempo de inferencia.
+        model="full",  #Se puede utilizar crepe pequeño "tiny" o crepe completo "full". Por defecto es full
     ):
         x = x.astype(
             np.float32
-        )  # fixes the F.conv2D exception. We needed to convert double to float.
+        )  # repara la excepción F.conv2D. Necesitamos convertir valor de double a float.
         x /= np.quantile(np.abs(x), 0.999)
         torch_device = self.get_optimal_torch_device()
         audio = torch.from_numpy(x).to(torch_device, copy=True)
@@ -112,7 +111,7 @@ class VC(object):
         if audio.ndim == 2 and audio.shape[0] > 1:
             audio = torch.mean(audio, dim=0, keepdim=True).detach()
         audio = audio.detach()
-        print("Initiating prediction with a crepe_hop_length of: " + str(hop_length))
+        print("Iniciando predicción con longitud crepe_hop_length de: " + str(hop_length))
         pitch: Tensor = torchcrepe.predict(
             audio,
             self.sr,
@@ -125,7 +124,7 @@ class VC(object):
             pad=True,
         )
         p_len = p_len or x.shape[0] // hop_length
-        # Resize the pitch for final f0
+        # Redimensiona el tono para obtener el f0 final
         source = np.array(pitch.squeeze(0).cpu().float().numpy())
         source[source < 0.001] = np.nan
         target = np.interp(
@@ -134,7 +133,7 @@ class VC(object):
             source,
         )
         f0 = np.nan_to_num(target)
-        return f0  # Resized f0
+        return f0  # F0 redimensionado
 
     def get_f0_official_crepe_computation(
         self,
@@ -143,9 +142,9 @@ class VC(object):
         f0_max,
         model="full",
     ):
-        # Pick a batch size that doesn't cause memory errors on your gpu
+        #Selecciona un tamaño de lote que no cause errores de memoria de tu GPU.
         batch_size = 512
-        # Compute pitch using first gpu
+        # Calcula el tono usando la primera gpu.
         audio = torch.tensor(np.copy(x))[None].float()
         f0, pd = torchcrepe.predict(
             audio,
@@ -164,14 +163,14 @@ class VC(object):
         f0 = f0[0].cpu().numpy()
         return f0
 
-    # Fork Feature: Compute pYIN f0 method
+    # Fork Feature: Calcular método pYIN f0
     def get_f0_pyin_computation(self, x, f0_min, f0_max):
         y, sr = librosa.load("saudio/Sidney.wav", self.sr, mono=True)
         f0, _, _ = librosa.pyin(y, sr=self.sr, fmin=f0_min, fmax=f0_max)
-        f0 = f0[1:]  # Get rid of extra first frame
+        f0 = f0[1:]  # Elimine el primer frame extra
         return f0
 
-    # Fork Feature: Acquire median hybrid f0 estimation calculation
+    # Fork Feature: Obtener la mediana del cálculo de la estimación f0 híbrida.
     def get_f0_hybrid_computation(
         self,
         methods_str,
@@ -184,14 +183,14 @@ class VC(object):
         crepe_hop_length,
         time_step,
     ):
-        # Get various f0 methods from input to use in the computation stack
+        # Permite utilizar varios métodos f0 para calcular datos de la pila.
         s = methods_str
         s = s.split("hybrid")[1]
         s = s.replace("[", "").replace("]", "")
         methods = s.split("+")
         f0_computation_stack = []
 
-        print("Calculating f0 pitch estimations for methods: %s" % str(methods))
+        print("Cálculo de estimaciones de tono f0 para los métodos: %s" % str(methods))
         x = x.astype(np.float32)
         x /= np.quantile(np.abs(x), 0.999)
         # Get f0 calculations for all methods specified

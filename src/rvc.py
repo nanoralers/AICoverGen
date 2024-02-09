@@ -21,7 +21,7 @@ class Config:
     def __init__(self, device, is_half):
         self.device = device
         self.is_half = is_half
-        self.n_cpu = 0
+        self.n_cpu = 6
         self.gpu_name = None
         self.gpu_mem = None
         self.x_pad, self.x_query, self.x_center, self.x_max = self.device_config()
